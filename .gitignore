@@ -1,0 +1,8 @@
+*.swp
+*.pyc
+*.idea
+.vscode
+*.json
+run_*.txt
+env/
+*/__pycache__/*
