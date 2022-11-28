@@ -1,50 +1,55 @@
 from __future__ import annotations
 import os
+import abc
 import time
-from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import List, Optional, Iterable, Tuple, Dict, Mapping, Set, IO, Any
-from collections import defaultdict
-
+import pathlib
+import collections
 import numpy as np
+from typing import List, Optional, Iterable, Tuple, Dict, Mapping, Set, IO, Any
 
-import dataset_classes.mot_sequence as mot_sequence
-from inputs.bbox import Bbox3d, Bbox2d
-from inputs.detection_2d import Detection2D
-from inputs.detections_2d import SEG_TO_TRACK_CLASS
-from objects.fused_instance import Source, FusedInstance
-from tracking.data_association import match_3d_2d_detections, match_multicam, CamDetectionIndices
 from utils import utils_viz, io
-from utils.utils_geometry import clip_bbox_to_four_corners
-from transform.transformation import Transformation
+from utils import utils_geometry
+from objects import fused_instance
+from transform import transformation
+from inputs import bbox, detection_2d
+from tracking import data_association
+from dataset_classes import mot_sequence
 
 
 """ We have three basic classes: Dataset, Sequence, Frame """
 
 
-class MOTFrame(ABC):
+class MOTFrame(abc.ABC):
+    ''' 多目标跟踪帧类
+    Attributes:
+        sequence: 帧所属序列对象
+        name: 帧名, 如 00001
+        _bboxes_3d: 三维检测对象列表, List[bbox.Bbox3d]
+        _dets_2d_multicam: 二维检测对象, Dict[str, List[detection_2d.Detection2D]]
+        ......
+    '''
     def __init__(self, sequence: mot_sequence.MOTSequence, name: str):
         self.sequence = sequence
         self.name = name
 
         # Detections 3D
-        self._bboxes_3d: List[Bbox3d] = []
+        self._bboxes_3d: List[bbox.Bbox3d] = []
         # Detections 3D
-        self._dets_2d_multicam: Dict[str, List[Detection2D]] = {}
+        self._dets_2d_multicam: Dict[str, List[detection_2d.Detection2D]] = {}
 
         self.instance_fusion_bbox_dir = os.path.join(sequence.instance_fusion_bbox_dir, self.name)
 
         self.det_score_thresholds = None
         self.seg_score_thresholds = None
 
-        self.fused_instances: List[FusedInstance] = []
+        self.fused_instances: List[fused_instance.FusedInstance] = []
 
         self._raw_pcd = None
         self._points_rect = None
         self.data = None
 
     @property
-    def transformation(self) -> Transformation:
+    def transformation(self) -> transformation.Transformation:
         return self.sequence.transformation
 
     ##########################################################
@@ -55,9 +60,9 @@ class MOTFrame(ABC):
         self.seg_score_thresholds = params["seg_scores"]
 
         if load:
-            dir_to_load = Path(self.get_fused_instances_dir(params))
-            if Path.is_dir(dir_to_load):
-                self.fused_instances.extend([FusedInstance.load(filename)
+            dir_to_load = pathlib.Path(self.get_fused_instances_dir(params))
+            if pathlib.Path.is_dir(dir_to_load):
+                self.fused_instances.extend([fused_instance.FusedInstance.load(filename)
                                              for filename in sorted(dir_to_load.iterdir())])
                 return
 
@@ -73,7 +78,7 @@ class MOTFrame(ABC):
         if save:
             self.save_fused_instances_if_new(params)
 
-        # Add FusedInstances stats - how many with both 3D and 2D and only 3D or 2D
+        # Add fused_instance.FusedInstances stats - how many with both 3D and 2D and only 3D or 2D
         total_unmatched_dets_2d = sum(len(v) for v in unmatched_2d_ids.values())
         run_info["instances_both"] += len(matched_ids)
         run_info["instances_3d"] += len(unmatched_3d_ids)
@@ -86,8 +91,8 @@ class MOTFrame(ABC):
         run_info["total_time_creating"] += creating_instances_t
         run_info["total_time_fusion"] += matching_t + creating_instances_t
 
-    def match_3d_2d_dets_with_iou(self, dets_3d: List[Bbox3d], dets_2d_multicam: Mapping[str, List[Detection2D]],
-                                  fusion_iou_threshold: float) -> Tuple[Dict[int, CamDetectionIndices],
+    def match_3d_2d_dets_with_iou(self, dets_3d: List[bbox.Bbox3d], dets_2d_multicam: Mapping[str, List[detection_2d.Detection2D]],
+                                  fusion_iou_threshold: float) -> Tuple[Dict[int, data_association.CamDetectionIndices],
                                                                         Set[int],
                                                                         Dict[str, List[int]]]:
         """ Matches 3D and 2D detections using 2D IoU as the metric.
@@ -95,14 +100,14 @@ class MOTFrame(ABC):
         """
         unmatched_dets_3d_ids: Set[int] = set(range(len(dets_3d)))  # default
         if dets_3d and dets_2d_multicam:  # If anything is detected in 3D
-            matched_indices: Dict[int, List[CamDetectionIndices]] = defaultdict(list)
-            unmatched_dets_2d_ids: Dict[str, List[int]] = defaultdict(list)
+            matched_indices: Dict[int, List[data_association.CamDetectionIndices]] = collections.defaultdict(list)
+            unmatched_dets_2d_ids: Dict[str, List[int]] = collections.defaultdict(list)
             for cam, dets_2d in dets_2d_multicam.items():
-                matched_in_cam: Dict[int, CamDetectionIndices] = {}
+                matched_in_cam: Dict[int, data_association.CamDetectionIndices] = {}
                 unmatched_dets_2d_ids_for_cam: List[int] = []
                 if dets_2d:
                     matched_in_cam, _, unmatched_dets_2d_ids_for_cam = \
-                        match_3d_2d_detections(dets_3d, cam, dets_2d, fusion_iou_threshold,
+                        data_association.match_3d_2d_detections(dets_3d, cam, dets_2d, fusion_iou_threshold,
                                                self.sequence.classes_to_track)
 
                 for dets_3d_i, cam_det_2d_i in matched_in_cam.items():
@@ -118,7 +123,7 @@ class MOTFrame(ABC):
                 for (cam, det_i) in list_matches:
                     assert det_i not in unmatched_dets_2d_ids[cam]
 
-            matched_final_indices = match_multicam(matched_indices, dets_3d)
+            matched_final_indices = data_association.match_multicam(matched_indices, dets_3d)
             assert unmatched_dets_3d_ids.isdisjoint(matched_final_indices.keys())
             return matched_final_indices, unmatched_dets_3d_ids, unmatched_dets_2d_ids
         else:  # nothing is matched
@@ -126,46 +131,46 @@ class MOTFrame(ABC):
                                      for cam, dets_2d in dets_2d_multicam.items()}
             return {}, unmatched_dets_3d_ids, unmatched_dets_2d_ids
 
-    def create_instances_from_matches(self, matched_indices: Mapping[int, CamDetectionIndices],
+    def create_instances_from_matches(self, matched_indices: Mapping[int, data_association.CamDetectionIndices],
                                       unmatched_det_ids: Iterable[int],
                                       unmatched_seg_ids: Mapping[str, Iterable[int]]):
-        """ Creates FusedInstance objects given ids of detections that were fused/not fused 
+        """ Creates fused_instance.FusedInstance objects given ids of detections that were fused/not fused 
         This method does not have any logic, jst sets attributes
         """
         for det_id, (cam, det_2d_id) in matched_indices.items():  # construct fully fused instances
             bbox_3d = self.bboxes_3d[det_id]
             detection_2d = self.dets_2d_multicam[cam][det_2d_id]
             assert bbox_3d.seg_class_id == detection_2d.seg_class_id, \
-                f'3D class is {SEG_TO_TRACK_CLASS[bbox_3d.seg_class_id]}, 2D is {SEG_TO_TRACK_CLASS[detection_2d.seg_class_id]}'
-            current_object = FusedInstance(len(self.fused_instances),
+                f'3D class is {detection_2d.SEG_TO_TRACK_CLASS[bbox_3d.seg_class_id]}, 2D is {detection_2d.SEG_TO_TRACK_CLASS[detection_2d.seg_class_id]}'
+            current_object = fused_instance.FusedInstance(len(self.fused_instances),
                                            detection_2d=detection_2d,
                                            bbox_3d=bbox_3d)
-            current_object.source = Source.DET_AND_SEG
+            current_object.source = fused_instance.Source.DET_AND_SEG
             current_object.mask_id = det_2d_id
             self.fused_instances.append(current_object)
 
         for det_3d_id in unmatched_det_ids:
             bbox_3d = self.bboxes_3d[det_3d_id]
-            current_object = FusedInstance(len(self.fused_instances),
+            current_object = fused_instance.FusedInstance(len(self.fused_instances),
                                            class_id=bbox_3d.seg_class_id, bbox_3d=bbox_3d)
-            current_object.source = Source.DET
+            current_object.source = fused_instance.Source.DET
             self.fused_instances.append(current_object)
 
         for cam, det_2d_list in unmatched_seg_ids.items():
             for det_2d_id in det_2d_list:
-                current_object = FusedInstance(len(self.fused_instances),
+                current_object = fused_instance.FusedInstance(len(self.fused_instances),
                                                detection_2d=self.dets_2d_multicam[cam][det_2d_id])
-                current_object.source = Source.SEG
+                current_object.source = fused_instance.Source.SEG
                 current_object.mask_id = det_2d_id
                 self.fused_instances.append(current_object)
 
     ##########################################################
     # MOT
 
-    def perform_tracking(self, params: Dict, run_info: Dict = defaultdict(int)):
+    def perform_tracking(self, params: Dict, run_info: Dict = collections.defaultdict(int)):
         self.fuse_instances_and_save(params, run_info, load=False, save=False)
 
-        # reset KF/tracking coordinates for loaded FusedInstance objects
+        # reset KF/tracking coordinates for loaded fused_instance.FusedInstance objects
         for fused_object in self.fused_instances:
             if fused_object.bbox3d is not None:
                 fused_object.bbox3d.reset_kf_coordinates()
@@ -238,21 +243,21 @@ class MOTFrame(ABC):
                 bbox_3d.clear_2d()
                 for cam in self.sequence.cameras:
                     bbox_projected = self.transformation.img_from_tracking(bbox_3d.corners_3d, cam, self.data)
-                    box_coords = clip_bbox_to_four_corners(
+                    box_coords = utils_geometry.clip_bbox_to_four_corners(
                         bbox_projected, self.sequence.img_shape_per_cam[cam])
-                    bbox_3d._bbox_2d_in_cam[cam] = Bbox2d(*box_coords) if box_coords is not None else None
+                    bbox_3d._bbox_2d_in_cam[cam] = bbox.Bbox2d(*box_coords) if box_coords is not None else None
 
     @property
-    def dets_2d_multicam(self) -> Dict[str, List[Detection2D]]:
+    def dets_2d_multicam(self) -> Dict[str, List[detection_2d.Detection2D]]:
         self.load_segmentations_2d_if_needed()
         return self._dets_2d_multicam
 
     @property
-    def bboxes_3d(self) -> List[Bbox3d]:
+    def bboxes_3d(self) -> List[bbox.Bbox3d]:
         self.load_detections_3d_if_needed()
         return self._bboxes_3d
 
-    def detections_3d(self, world: bool) -> List[Bbox3d]:
+    def detections_3d(self, world: bool) -> List[bbox.Bbox3d]:
         return self.bboxes_3d_world if world else self.bboxes_3d_ego
 
     ##########################################################
@@ -289,7 +294,7 @@ class MOTFrame(ABC):
                 for bbox_3d in self.bboxes_3d:
                     bbox_projected = self.transformation.img_from_tracking(bbox_3d.corners_3d,
                                                                            self.sequence.camera_default, self.data)
-                    rect_coords = clip_bbox_to_four_corners(bbox_projected, img_default_shape_real)
+                    rect_coords = utils_geometry.clip_bbox_to_four_corners(bbox_projected, img_default_shape_real)
                     utils_viz.draw_bbox(img, rect_coords, (0, 0, 0), 2)  # Black
 
         utils_viz.save_image(img, os.path.join(dir_to_save, self.name + '.png'), convert_to_uint8=False)
@@ -297,38 +302,38 @@ class MOTFrame(ABC):
     ##########################################################
     # Required methods and fields
 
-    @abstractmethod
+    @abc.abstractmethod
     def get_image_original(self, cam: str):
         pass
 
-    @abstractmethod
+    @abc.abstractmethod
     def get_image_original_uint8(self, cam: str):
         pass
 
-    @abstractmethod
+    @abc.abstractmethod
     def load_raw_pcd(self) -> np.ndarray:
         " Nx3 points"
 
-    @abstractmethod
+    @abc.abstractmethod
     def transform_instances_to_world_frame(self) -> Tuple[np.ndarray, float]:
         pass
 
     @property
-    @abstractmethod
-    def bboxes_3d_world(self) -> List[Bbox3d]:
+    @abc.abstractmethod
+    def bboxes_3d_world(self) -> List[bbox.Bbox3d]:
         pass
 
     @property
-    @abstractmethod
-    def bboxes_3d_ego(self) -> List[Bbox3d]:
+    @abc.abstractmethod
+    def bboxes_3d_ego(self) -> List[bbox.Bbox3d]:
         pass
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def points_world(self) -> np.ndarray:
         pass
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def center_world_point(self) -> np.ndarray:
         pass

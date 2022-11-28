@@ -6,3 +6,4 @@
 run_*.txt
 env/
 */__pycache__/*
+__init__.py

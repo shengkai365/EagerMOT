@@ -31,17 +31,21 @@ class MOTFrameKITTI(mot_frame.MOTFrame):
         self._angle_around_vertical: Optional[float] = None
 
     def get_image_original(self, cam: str = "image_02"):
-        return self._read_image(cam, mpimg.imread)
-
-    def get_image_original_uint8(self, cam: str = "image_02"):
-        return self._read_image(cam, imageio.imread)
-
-    def _read_image(self, cam: str, read_function: Callable):
-        image = read_function(self.image_path % cam)
+        '''返回此帧图像, 并记录图像的尺寸 - matplotlib.image
+        '''
+        image = mpimg.imread(self.image_path % cam)
         # need to remember actual image size
         self.sequence.img_shape_per_cam[cam] = image.shape[:2]
         return image
 
+    def get_image_original_uint8(self, cam: str = "image_02"):
+        '''返回此帧图像, 并记录图像的尺寸 - imageio
+        '''
+        image = imageio.imread(self.image_path % cam)
+        # need to remember actual image size
+        self.sequence.img_shape_per_cam[cam] = image.shape[:2]
+        return image
+    
     def load_raw_pcd(self):
         pcd = np.fromfile(self.pcd_path, dtype=np.float32)
         return pcd.reshape((-1, 4))[:, :3]
@@ -103,9 +107,9 @@ class MOTFrameKITTI(mot_frame.MOTFrame):
 
 
 class MOTSequenceKITTI(mot_sequence.MOTSequence):
-    def __init__(self, detections_dir_3d: str, detections_dir_2d: str, split_dir: str, split: str,
+    def __init__(self, detections_3d: str, detections_2d: str, split_dir: str, split: str,
                  name: str, frame_names: List[str]):
-        super().__init__(detections_dir_3d, detections_dir_2d, split_dir, name, frame_names)
+        super().__init__(detections_3d, detections_2d, split_dir, name, frame_names)
         self.data_dir = os.path.join(local_variables.KITTI_DATA_DIR, split)
         self.image_path = os.path.join(self.data_dir, "%s", self.name)
         self.pcd_path = os.path.join(self.data_dir, "velodyne", self.name)
@@ -133,25 +137,34 @@ class MOTSequenceKITTI(mot_sequence.MOTSequence):
         return self._transformation
 
     def get_frame(self, frame_name: str):
+        '''创建并返回帧对象
+        Args:
+            frame_name: 帧名, 如 000001
+        Returns:
+            frame: 帧对象
+        '''
         frame = MOTFrameKITTI(self, frame_name)
-        if not self.img_shape_per_cam:  # get the true cam image shape by loading a frame for the first time
+        
+        # 通过首次加载一帧图像来确定图像尺寸
+        if not self.img_shape_per_cam: 
             for cam in self.cameras:
+                # 记录图像尺寸
                 frame.get_image_original(cam)
             self.mot.img_shape_per_cam = self.img_shape_per_cam
         return frame
 
     def load_detections_3d(self) -> Dict[str, List[bbox.Bbox3d]]:
-        bboxes_3d_all = loading.load_detections_3d(self.detections_dir_3d, self.name)
+        bboxes_3d_all = loading.load_detections_3d(self.detections_3d, self.name)
         return {str(frame_i).zfill(6): bboxes_3d
                 for frame_i, bboxes_3d in enumerate(bboxes_3d_all)}
 
     def load_detections_2d(self) -> Dict[str, Dict[str, List[detection_2d.Detection2D]]]:
-        if self.detections_dir_2d == utils.MMDETECTION_CASCADE_NUIMAGES:
-            return loading.load_detections_2d_kitti_new(self.detections_dir_2d, self.name)
+        if self.detections_2d == utils.MMDETECTION_CASCADE_NUIMAGES:
+            return loading.load_detections_2d_kitti_new(self.detections_2d, self.name)
 
         """ Load and construct 2D Detections for this sequence, sorted by score ascending """
         bboxes_all, scores_all, reids_all, classes_all, masks_all = loading.load_detections_2d_kitti(
-            self.detections_dir_2d, self.name)
+            self.detections_2d, self.name)
 
         return {str(frame_i).zfill(6): self.construct_detections_2d(bboxes, scores, classes, masks, reids)
                 for frame_i, (bboxes, scores, classes, masks, reids)
@@ -189,6 +202,9 @@ class MOTSequenceKITTI(mot_sequence.MOTSequence):
                 np.save(np_file, self.ego_motion_transforms)
 
     def load_ego_motion_transforms(self) -> None:
+        '''加载自我运动(ego motion)文件
+        更改属性: ego_motion_transforms, has_full_ego_motion_transforms_loaded
+        '''
         assert os.path.isfile(self.ego_motion_filepath), "Missing ego motion files"
         with open(self.ego_motion_filepath, 'rb') as np_file:
             self.ego_motion_transforms = np.load(np_file)
@@ -228,8 +244,8 @@ class MOTDatasetKITTI(mot_dataset.MOTDataset):
     BASELINE = 0.532719
     CAMERA_PARAMS = [FOCAL, CU, CV, BASELINE]
 
-    def __init__(self, work_dir, detections_dir_3d: str, detections_dir_2d: str):
-        super().__init__(work_dir, detections_dir_3d, detections_dir_2d)
+    def __init__(self, work_dir, detections_3d: str, detections_2d: str):
+        super().__init__(work_dir, detections_3d, detections_2d)
         self.splits: Set[str] = {"training", "testing"}
         self.split_sequence_frame_names_map: Dict[str, Dict[str, List[str]]] = {sp: {} for sp in self.splits}
 
@@ -253,7 +269,7 @@ class MOTDatasetKITTI(mot_dataset.MOTDataset):
     def get_sequence(self, split: str, sequence_name: str) -> MOTSequenceKITTI:
         self.assert_sequence_in_split_exists(split, sequence_name)
         split_dir = os.path.join(self.work_dir, split)
-        return MOTSequenceKITTI(self.detections_dir_3d, self.detections_dir_2d, split_dir, split, sequence_name,
+        return MOTSequenceKITTI(self.detections_3d, self.detections_2d, split_dir, split, sequence_name,
                                 self.split_sequence_frame_names_map[split][sequence_name])
 
     def save_all_mot_results(self, folder_name: str) -> None:

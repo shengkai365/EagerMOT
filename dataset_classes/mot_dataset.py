@@ -4,16 +4,16 @@ from dataset_classes import mot_sequence
 
 
 class MOTDataset(ABC):
-    def __init__(self, work_dir: str, detections_dir_3d: str, detections_dir_2d: str):
+    def __init__(self, work_dir: str, detections_3d: str, detections_2d: str):
         """ Initialize the general dataset-level object
         
         :param work_dir: path to workspace output directory
-        :param detections_dir_3d: source of 3D detections
-        :param detections_dir_2d: source of 2D detections
+        :param detections_3d: source of 3D detections
+        :param detections_2d: source of 2D detections
         """
         self.work_dir = work_dir
-        self.detections_dir_3d = detections_dir_3d  # see dataset specific classes e.g. mot_kitti
-        self.detections_dir_2d = detections_dir_2d  # see dataset specific classes e.g. mot_kitti
+        self.detections_3d = detections_3d  # see dataset specific classes e.g. mot_kitti
+        self.detections_2d = detections_2d  # see dataset specific classes e.g. mot_kitti
         self.splits: Set[str] = set()
 
     def assert_split_exists(self, split: str) -> None:

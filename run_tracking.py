@@ -8,7 +8,7 @@ from dataset_classes.nuscenes import dataset
 from configs import parameters, local_variables
 
 
-def perform_tracking_full(dataset: mot_kitti.MOTDatasetKITTI, 
+def perform_tracking_full(dataset: mot_dataset.MOTDataset,
                           params: Dict[str, Any], 
                           target_sequences: Set[str], 
                           sequences_to_exclude: Set[str], 
@@ -30,11 +30,11 @@ def perform_tracking_full(dataset: mot_kitti.MOTDatasetKITTI,
         target_sequences = set(dataset.sequence_names(local_variables.SPLIT))
     valid_sequences = target_sequences - sequences_to_exclude
         
-    total_frame_count = 0
-    total_time = 0
-    total_time_tracking = 0
-    total_time_fusion = 0
-    total_time_reporting = 0
+    total_frame_count = 0       # 数据集总帧数
+    total_time = 0              # 数据集总运行时间
+    total_time_tracking = 0     # 数据集总跟踪时间
+    total_time_fusion = 0       # 数据集总融合时间
+    total_time_reporting = 0    # 多目标跟踪结果写入总时间
 
     for sequence_name in sorted(valid_sequences):
         print(f'Starting sequence: {sequence_name}')
@@ -49,23 +49,25 @@ def perform_tracking_full(dataset: mot_kitti.MOTDatasetKITTI,
         run_info = sequence.perform_tracking_for_eval(params)
         if "total_time_mot" not in run_info:
             continue
-
-        total_time = time.time() - start_time
+        
+        # 序列执行总时间
+        sequence_time = time.time() - start_time
         if print_debug_info:
-            print(f'Sequence {sequence_name} took {total_time:.2f} sec, {total_time / 60.0 :.2f} min')
-            print(f'Matching took {run_info["total_time_matching"]:.2f} sec, {100 * run_info["total_time_matching"] / total_time:.2f}%')
-            print(f'Creating took {run_info["total_time_creating"]:.2f} sec, {100 * run_info["total_time_creating"] / total_time:.2f}%')
-            print(f'Fusion   took {run_info["total_time_fusion"]:.2f} sec, {100 * run_info["total_time_fusion"] / total_time:.2f}%')
-            print(f'Tracking took {run_info["total_time_mot"]:.2f} sec, {100 * run_info["total_time_mot"] / total_time:.2f}%')
+            print(f'Sequence {sequence_name} took {sequence_time:.2f} sec, {sequence_time / 60.0 :.2f} min')
+            print(f'Matching took {run_info["total_time_matching"]:.2f} sec, {100 * run_info["total_time_matching"] / sequence_time:.2f}%')
+            print(f'Creating took {run_info["total_time_creating"]:.2f} sec, {100 * run_info["total_time_creating"] / sequence_time:.2f}%')
+            print(f'Fusion   took {run_info["total_time_fusion"]:.2f} sec, {100 * run_info["total_time_fusion"] / sequence_time:.2f}%')
+            print(f'Tracking took {run_info["total_time_mot"]:.2f} sec, {100 * run_info["total_time_mot"] / sequence_time:.2f}%')
             print(f'{run_info["matched_tracks_first_total"]} 1st stage and {run_info["matched_tracks_second_total"]} 2nd stage matches')
             print("\n")
 
-        total_time += total_time
+        total_time += sequence_time
         total_time_fusion += run_info["total_time_fusion"]
         total_time_tracking += run_info["total_time_mot"]
         total_time_reporting += run_info["total_time_reporting"]
         total_frame_count += len(sequence.frame_names)
-
+    
+    # 没有数据帧直接返回
     if total_frame_count == 0:
         return variant, run_info
 
@@ -163,8 +165,8 @@ def run_on_kitti():
     # 创建kitti数据集对象
     kitti_dataset = mot_kitti.MOTDatasetKITTI(
                     work_dir=local_variables.KITTI_WORK_DIR,
-                    detections_dir_3d=utils.POINTGNN_T3,
-                    detections_dir_2d=utils.TRACKING_BEST)
+                    detections_3d=utils.POINTGNN_T3,
+                    detections_2d=utils.TRACKING_BEST)
 
     # 只在特定的序列上运行, 添加其序列名, 形如：0001、0020
     target_sequences: Set[str] = set()
