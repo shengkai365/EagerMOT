@@ -1,17 +1,13 @@
 import os
 import ujson as json
-import time
-from typing import IO, Any, Dict, Iterable
+from typing import Any, Dict, Iterable
 
-import numpy as np
-from pyquaternion import Quaternion
-
-from objects.fused_instance import FusedInstance
+from objects import fused_instance
 from dataset_classes.nuscenes.classes import name_from_id
 from transform.nuscenes import convert_kitti_bbox_coordinates_to_nu
 
 
-def build_results_dict(instance: FusedInstance, frame_token: str) -> Dict[str, Any]:
+def build_results_dict(instance: fused_instance.FusedInstance, frame_token: str) -> Dict[str, Any]:
     assert instance.report_mot
     bbox3d_coords = instance.coordinates_3d  # [h, w, l, x, y, z, theta]
     assert bbox3d_coords is not None
@@ -31,7 +27,7 @@ def build_results_dict(instance: FusedInstance, frame_token: str) -> Dict[str, A
 
 
 def add_results_to_submit(submission: Dict[str, Dict[str, Any]], frame_token: str,
-                      predicted_instances: Iterable[FusedInstance]) -> None:
+                      predicted_instances: Iterable[fused_instance.FusedInstance]) -> None:
     assert frame_token not in submission["results"], submission["results"][frame_token]
     submission["results"][frame_token] = []
 

@@ -28,10 +28,10 @@
 # vehicle.truck	truck
 
 from typing import List
-from enum import Enum
+import enum
 
 
-class NuScenesClasses(Enum):
+class NuScenesClasses(enum.Enum):
     car = 1
     pedestrian = 2
     bicycle = 3

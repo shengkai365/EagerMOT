@@ -1,12 +1,6 @@
 import os
 import ujson as json
-
-import numpy as np
-
-from configs.local_variables import MOUNT_PATH
-import inputs.utils as utils
-import inputs.detections_2d as detections_2d
-import inputs.detections_3d as detections_3d
+from inputs import utils, detections_2d, detections_3d
 
 #############################################################################
 # Combining MOTSFusion segmentations with their corresponding detection info  

@@ -1,7 +1,5 @@
 import numpy as np
-
-from utils.utils_geometry import (iou_3d_from_corners, box_2d_overlap_union,
-                                  tracking_center_distance_2d, tracking_distance_2d_dims, tracking_distance_2d_full)
+from utils import utils_geometry
 
 
 '''
@@ -9,26 +7,26 @@ from utils.utils_geometry import (iou_3d_from_corners, box_2d_overlap_union,
 '''
 def iou_bbox_3d_matrix(detections, predictions, detections_dims, predictions_dims):
     return generic_similarity_matrix_two_args(detections, predictions,
-                                              detections_dims, predictions_dims, iou_3d_from_corners)
+                                              detections_dims, predictions_dims, utils_geometry.iou_3d_from_corners)
 
 '''
 ' 2d 空间下中心点的距离
 '''
 def distance_2d_matrix(centers_0, centers_1):
-    return generic_similarity_matrix(centers_0, centers_1, tracking_center_distance_2d)
+    return generic_similarity_matrix(centers_0, centers_1, utils_geometry.tracking_center_distance_2d)
 
 
 '''
 ' x, y, z, w, h, l 六维下的空间距离
 '''
 def distance_2d_dims_matrix(coords_0, coords_1):
-    return generic_similarity_matrix(coords_0, coords_1, tracking_distance_2d_dims)
+    return generic_similarity_matrix(coords_0, coords_1, utils_geometry.tracking_distance_2d_dims)
 
 '''
 ' EgerMOT中的相似度计算, 六维距离乘以角度距离
 '''
 def distance_2d_full_matrix(coords_0, coords_1):
-    return generic_similarity_matrix(coords_0, coords_1, tracking_distance_2d_full)
+    return generic_similarity_matrix(coords_0, coords_1, utils_geometry.tracking_distance_2d_full)
 
 '''
 ' 权重设置
@@ -42,7 +40,7 @@ def distance_pos_dims_weight_matrix(centers_0, centers_1, dims_0, dims_1, thresh
 ' 2d IOU
 '''
 def iou_bbox_2d_matrix(det_bboxes, seg_bboxes):
-    return generic_similarity_matrix(det_bboxes, seg_bboxes, box_2d_overlap_union)
+    return generic_similarity_matrix(det_bboxes, seg_bboxes, utils_geometry.box_2d_overlap_union)
 
 
 def generic_similarity_matrix(list_0, list_1, similarity_function):

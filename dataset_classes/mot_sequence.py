@@ -58,7 +58,12 @@ class MOTSequence(abc.ABC):
     # Evaluation
 
     def perform_tracking_for_eval(self, params: Mapping[str, Any]) -> Dict[str, Any]:
-
+        '''对每个序列执行跟踪, 保存跟踪结果, 返回执行信息
+        Args:
+            params: 跟踪过程的超参数
+        Returns:
+            执行信息的字典
+        '''
 
         folder_identifier = 'cleaning_0'  # 为代码相关的变化添加一个简单的标识符
         
@@ -95,11 +100,13 @@ class MOTSequence(abc.ABC):
             predicted_instances = frame.perform_tracking(params, run_info)
 
             start_reporting = time.time()
-            # 
+            # 根据预测实例对象写入多目标跟踪结果
             self.report_mot_results(frame.name, predicted_instances, mot_3d_file, mot_2d_from_3d_file)
             run_info["total_time_reporting"] += time.time() - start_reporting
-
+        
+        # 保存跟踪结果, 即关闭文件描述符
         self.save_mot_results(mot_3d_file, mot_2d_from_3d_file)
+        # 如果没有加载ego motion文件, 那么保存ego motion的npy文件
         self.save_ego_motion_transforms_if_new()
         return run_info
 

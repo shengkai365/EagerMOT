@@ -1,7 +1,6 @@
 import copy
 import glob
 import os
-
 import numpy as np
 # The full file is taken from AB3DMOT https://github.com/xinshuoweng/AB3DMOT to load their detections
 

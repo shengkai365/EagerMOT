@@ -1,19 +1,10 @@
 from __future__ import annotations
-import math
-from collections import namedtuple
 from typing import Optional
+from inputs import bbox
 
-import numpy as np
-
-from transform.transformation import to_homogeneous, inverse_rigid_transform, get_rotation_matrix_around_y
-import utils.utils_geometry as utils_geometry
-from inputs.bbox import ProjectsToCam, Bbox2d
-# import inputs.bbox as inputs_bbox
-
-
-class Detection2D(ProjectsToCam):
+class Detection2D(bbox.ProjectsToCam):
     def __init__(self,
-                 bbox: Bbox2d,
+                 bbox: bbox.Bbox2d,
                  cam: str,
                  score: float,
                  seg_class_id: int,
@@ -29,5 +20,5 @@ class Detection2D(ProjectsToCam):
         self.mask_decoded = mask_decoded
         self.reid = reid
 
-    def bbox_2d_in_cam(self, cam: str) -> Optional[Bbox2d]:
+    def bbox_2d_in_cam(self, cam: str) -> Optional[bbox.Bbox2d]:
         return self.bbox if cam == self.cam else None

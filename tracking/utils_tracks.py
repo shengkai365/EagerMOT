@@ -1,14 +1,13 @@
-from typing import Tuple
-
 import numpy as np
-from filterpy.kalman import KalmanFilter
+from typing import Tuple
+from filterpy import kalman
 
 PI = np.pi
 TWO_PI = 2 * np.pi
 
 
 def normalize_angle(angle: float) -> float:
-    """ Keep the angle in [0; 2 PI] range"""
+    """ 保持角度在 [0, 2 PI] 的范围 """
     while angle < 0:
         angle += TWO_PI
     while angle > TWO_PI:
@@ -40,9 +39,15 @@ def correct_new_angle_and_diff(current_angle: float, new_angle_to_correct: float
     return correct_new_angle_and_diff(current_angle, PI + new_angle_to_correct)
 
 
-def default_kf_3d(is_angular: bool) -> KalmanFilter:
+def default_kf_3d(is_angular: bool) -> kalman.KalmanFilter:
+    '''创建卡尔曼滤波器对象
+    Args:
+        is_angular: 是否加入偏航角
+    Returns:
+        卡尔曼滤波器对象
+    '''
     if is_angular:  # add angular velocity to the state vector
-        kf = KalmanFilter(dim_x=11, dim_z=7)
+        kf = kalman.KalmanFilter(dim_x=11, dim_z=7)
         kf.F = np.array([[1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],  # state transition matrix
                          [0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0],
                          [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0],
@@ -63,7 +68,7 @@ def default_kf_3d(is_angular: bool) -> KalmanFilter:
                          [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
                          [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]])
     else:
-        kf = KalmanFilter(dim_x=10, dim_z=7)  # [x,y,z,theta,l,w,h] + [vx, vy, vz]
+        kf = kalman.KalmanFilter(dim_x=10, dim_z=7)  # [x,y,z,theta,l,w,h] + [vx, vy, vz]
         kf.F = np.array([[1, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # state transition matrix
                          [0, 1, 0, 0, 0, 0, 0, 0, 1, 0],
                          [0, 0, 1, 0, 0, 0, 0, 0, 0, 1],

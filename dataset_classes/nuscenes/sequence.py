@@ -1,28 +1,24 @@
 from __future__ import annotations
 import os
-from typing import Optional, List, Dict, Set, Any, Iterable, IO
-from collections import defaultdict
-
+import collections
 import numpy as np
 from nuscenes.nuscenes import NuScenes
+from typing import Optional, List, Dict, Any, Iterable, IO
 
-from inputs.bbox import Bbox3d
-from inputs.detection_2d import Detection2D
-from objects.fused_instance import FusedInstance
+from inputs import bbox, detection_2d, loading
+from objects import fused_instance
+
 from dataset_classes.mot_sequence import MOTSequence
 from dataset_classes.nuscenes.frame import MOTFrameNuScenes
 import dataset_classes.nuscenes.classes as nu_classes
 import dataset_classes.nuscenes.reporting as reporting
 from transform.nuscenes import TransformationNuScenes
 from configs.local_variables import NUSCENES_DATA_DIR
-import inputs.loading as loading
-import inputs.utils as input_utils
-
 
 class MOTSequenceNuScenes(MOTSequence):
     def __init__(self, det_source: str, seg_source: str, split_dir: str, split: str,
                  nusc: NuScenes, scene, dataset_submission: Dict[str, Dict[str, Any]],
-                 dataset_detections_3d: Dict[str, List[Bbox3d]]):
+                 dataset_detections_3d: Dict[str, List[bbox.Bbox3d]]):
         self.nusc = nusc
         self.scene = scene
         self.frame_tokens = self._parse_frame_tokens()
@@ -73,15 +69,15 @@ class MOTSequenceNuScenes(MOTSequence):
             self.mot.img_shape_per_cam = self.img_shape_per_cam
         return frame
 
-    def load_detections_3d(self) -> Dict[str, List[Bbox3d]]:
+    def load_detections_3d(self) -> Dict[str, List[bbox.Bbox3d]]:
         if not self.dataset_detections_3d:
             self.dataset_detections_3d.update(loading.load_detections_3d(self.det_source, self.name))
         return self.dataset_detections_3d
 
-    def load_detections_2d(self) -> Dict[str, Dict[str, List[Detection2D]]]:
+    def load_detections_2d(self) -> Dict[str, Dict[str, List[detection_2d.Detection2D]]]:
         frames_cam_tokens_detections = loading.load_detections_2d_nuscenes(self.seg_source, self.token)
-        frames_cams_detections: Dict[str, Dict[str, List[Detection2D]]
-                                     ] = defaultdict(lambda: defaultdict(list))
+        frames_cams_detections: Dict[str, Dict[str, List[detection_2d.Detection2D]]
+                                     ] = collections.defaultdict(lambda: collections.defaultdict(list))
 
         for frame_token, cam_detections in frames_cam_tokens_detections.items():
             for cam_data_token, detections in cam_detections.items():
@@ -104,7 +100,7 @@ class MOTSequenceNuScenes(MOTSequence):
     def classes_to_track(self) -> List[int]:
         return nu_classes.ALL_NUSCENES_CLASS_IDS
 
-    def report_mot_results(self, frame_name: str, predicted_instances: Iterable[FusedInstance],
+    def report_mot_results(self, frame_name: str, predicted_instances: Iterable[fused_instance.FusedInstance],
                    mot_3d_file: IO,
                    mot_2d_from_3d_only_file: Optional[IO]) -> None:
         reporting.add_results_to_submit(self.dataset_submission, frame_name, predicted_instances)

@@ -1,8 +1,8 @@
+import enum
 from typing import List
-from enum import Enum
 
 
-class KITTIClasses(Enum):
+class KITTIClasses(enum.Enum):
     car = 1
     pedestrian = 2
 

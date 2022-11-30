@@ -4,14 +4,10 @@ import ujson as json
 from typing import Dict, List
 from collections import defaultdict
 
-import numpy as np
+from inputs import utils, detection_2d
 
-from configs.local_variables import MOUNT_PATH
-import inputs.utils as utils
-import inputs.detection_2d as detection_2d
-# from inputs.bbox import Bbox2d
+# ...
 import inputs.bbox as inputs_bbox
-from dataset_classes.nuscenes.classes import ALL_NUSCENES_CLASS_IDS
 
 NO_LABEL = -1
 CAR_CLASS = 1

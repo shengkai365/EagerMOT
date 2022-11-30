@@ -1,29 +1,24 @@
 from __future__ import annotations
 import pickle
+import enum
+import numpy as np
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
+from transform import transformation
+from inputs import detection_2d, detections_2d, bbox
 
-from transform.transformation import inverse_rigid_transform
-from inputs.bbox import Bbox2d, ProjectsToCam, Bbox3d
-import inputs.detection_2d as detection_2d
-import inputs.detections_2d as detections_2d
-from enum import Enum
-
-
-class Source(Enum):
+class Source(enum.Enum):
     DET = 1
     SEG = 2
     DET_AND_SEG = 3
     IGNORE = -1
 
-
-class FusedInstance(ProjectsToCam):
+class FusedInstance(bbox.ProjectsToCam):
     def __init__(self, instance_id,
                  class_id: Optional[int] = None,
                  detection_2d: Optional[detection_2d.Detection2D] = None,
-                 bbox_3d: Optional[Bbox3d] = None):
+                 bbox_3d: Optional[bbox.Bbox3d] = None):
         self.instance_id: int = instance_id
         self.class_id: Optional[int] = class_id
         self.points_rect = None
@@ -68,13 +63,13 @@ class FusedInstance(ProjectsToCam):
                 self.detection_2d.reid = None
                 self.detection_2d.bbox = None
 
-    def bbox_2d_best(self, cam) -> Optional[Bbox2d]:
+    def bbox_2d_best(self, cam) -> Optional[bbox.Bbox2d]:
         if self.bbox3d is not None and self.bbox3d.bbox_2d_in_cam(cam) is not None:
             self.bbox_2d_source = Source.DET
             self.bbox_2d_conf = float(self.bbox3d.confidence)
             return self.bbox3d.bbox_2d_in_cam(cam)
 
-        bbox_from_2d: Optional[Bbox2d] = self.bbox_2d_from_2d_in_cam(cam)
+        bbox_from_2d: Optional[bbox.Bbox2d] = self.bbox_2d_from_2d_in_cam(cam)
         if bbox_from_2d is not None:
             self.bbox_2d_source = Source.SEG
             self.bbox_2d_conf = self.score
@@ -84,10 +79,10 @@ class FusedInstance(ProjectsToCam):
         self.bbox_2d_conf = 0
         return None
 
-    def bbox_2d_from_2d_in_cam(self, cam: str) -> Optional[Bbox2d]:
+    def bbox_2d_from_2d_in_cam(self, cam: str) -> Optional[bbox.Bbox2d]:
         return self.detection_2d.bbox_2d_in_cam(cam) if self.detection_2d else None
 
-    def bbox_2d_in_cam(self, cam: str) -> Optional[Bbox2d]:
+    def bbox_2d_in_cam(self, cam: str) -> Optional[bbox.Bbox2d]:
         return self.bbox_2d_from_2d_in_cam(cam)
         # raise NotImplementedError  # do not use this method, the name is ambiguous
 
@@ -98,14 +93,14 @@ class FusedInstance(ProjectsToCam):
             return 1e10 - offset
         return np.linalg.norm(self.bbox3d.centroid_original[(0, 2), ])  # only x-z plane - ignore elevation
 
-    def transform(self, transformation, angle_around_y=None):
-        assert transformation is not None, 'Requested None transformation'
+    def transform(self, transf, angle_around_y=None):
+        assert transf is not None, 'Requested None transformation'
         if angle_around_y is not None and self.bbox3d is not None:
-            self.bbox3d.transform(transformation, angle_around_y)
+            self.bbox3d.transform(transf, angle_around_y)
 
-    def inverse_transform(self, transformation, angle_around_y):
-        assert transformation is not None, 'Requested None reverse transformation'
-        self.transform(inverse_rigid_transform(transformation), -angle_around_y)
+    def inverse_transform(self, transf, angle_around_y):
+        assert transf is not None, 'Requested None reverse transformation'
+        self.transform(transformation.inverse_rigid_transform(transf), -angle_around_y)
 
     def save(self, path_to_frame_folder):
         with open(Path(path_to_frame_folder) / str(self.instance_id), 'wb') as handle:
@@ -117,7 +112,7 @@ class FusedInstance(ProjectsToCam):
             return pickle.load(handle)
 
     @property
-    def bbox_2d(self) -> Optional[Bbox2d]:
+    def bbox_2d(self) -> Optional[bbox.Bbox2d]:
         return self.detection_2d.bbox if self.detection_2d else None
 
     @property

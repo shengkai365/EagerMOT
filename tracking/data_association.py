@@ -1,18 +1,13 @@
-import time
-from typing import List, Iterable, Tuple, Sequence, Mapping, Dict, Set, Any
-from collections import defaultdict
-
 import numpy as np
-from scipy.optimize import linear_sum_assignment
+from scipy import optimize
+from typing import List, Iterable, Tuple, Sequence, Mapping, Dict, Set, Any
 
-from inputs.bbox import Bbox2d, Bbox3d, ProjectsToCam
-from inputs.detection_2d import Detection2D
-from utils.utils_geometry import convert_bbox_coordinates_to_corners, box_2d_area
-from tracking.utils_association import (iou_bbox_2d_matrix, iou_bbox_3d_matrix, distance_pos_dims_weight_matrix,
-                                        distance_2d_matrix, distance_2d_dims_matrix, distance_2d_full_matrix)
-from tracking.tracks import Track
-from objects.fused_instance import FusedInstance
-
+from inputs import bbox
+from tracking import tracks
+from inputs import detection_2d
+from utils import utils_geometry
+from objects import fused_instance
+from tracking import utils_association
 
 CamDetectionIndices = Tuple[str, int]
 
@@ -32,22 +27,22 @@ def associate_instances_to_tracks_3d_iou(detected_instances, tracks, params: Map
 
     if params['first_matching_method'] == 'iou_3d':
         detected_corners = [instance.bbox3d.corners_3d for instance in detected_instances]
-        tracks_corners = [convert_bbox_coordinates_to_corners(state) for state in track_coordinates]
+        tracks_corners = [utils_geometry.convert_bbox_coordinates_to_corners(state) for state in track_coordinates]
         detections_dims = [instance.bbox3d.kf_coordinates[4:7] for instance in detected_instances]
         tracks_dims = [state[4:7] for state in track_coordinates]
-        matrix_3d_sim = iou_bbox_3d_matrix(detected_corners, tracks_corners, detections_dims, tracks_dims)
+        matrix_3d_sim = utils_association.iou_bbox_3d_matrix(detected_corners, tracks_corners, detections_dims, tracks_dims)
     elif params['first_matching_method'] == "dist_2d":
         detected_centers = [instance.bbox3d.kf_coordinates[:3] for instance in detected_instances]
         track_centers = [state[:3] for state in track_coordinates]
-        matrix_3d_sim = distance_2d_matrix(detected_centers, track_centers)
+        matrix_3d_sim = utils_association.distance_2d_matrix(detected_centers, track_centers)
         matrix_3d_sim *= -1
     elif params['first_matching_method'] == "dist_2d_dims":
         detected_coordinates = [instance.bbox3d.kf_coordinates for instance in detected_instances]
-        matrix_3d_sim = distance_2d_dims_matrix(detected_coordinates, track_coordinates)
+        matrix_3d_sim = utils_association.distance_2d_dims_matrix(detected_coordinates, track_coordinates)
         matrix_3d_sim *= -1
     elif params['first_matching_method'] == "dist_2d_full":
         detected_coordinates = [instance.bbox3d.kf_coordinates for instance in detected_instances]
-        matrix_3d_sim = distance_2d_full_matrix(detected_coordinates, track_coordinates)
+        matrix_3d_sim = utils_association.distance_2d_full_matrix(detected_coordinates, track_coordinates)
         matrix_3d_sim *= -1
     elif params['first_matching_method'] == "dist_dims_weight":
         detected_centers = [instance.bbox3d.kf_coordinates[:3] for instance in detected_instances]
@@ -58,7 +53,7 @@ def associate_instances_to_tracks_3d_iou(detected_instances, tracks, params: Map
         # weight = [0.95 for _ in range(len(detected_centers))]
         
 
-        matrix_3d_sim = distance_pos_dims_weight_matrix(detected_centers, track_centers, detections_dims, tracks_dims, threshold=1)
+        matrix_3d_sim = utils_association.distance_pos_dims_weight_matrix(detected_centers, track_centers, detections_dims, tracks_dims, threshold=1)
         matrix_3d_sim *= -1
 
     matched_indices, unmatched_det_ids, unmatched_track_ids = \
@@ -67,8 +62,8 @@ def associate_instances_to_tracks_3d_iou(detected_instances, tracks, params: Map
                           track_classes, params["thresholds_per_class"])
 
 
-def associate_instances_to_tracks_2d_iou(instances_leftover: Iterable[FusedInstance],
-                                         tracks_leftover: Iterable[Track],
+def associate_instances_to_tracks_2d_iou(instances_leftover: Iterable[fused_instance.FusedInstance],
+                                         tracks_leftover: Iterable[tracks.Track],
                                          iou_threshold: float,
                                          ego_transform, angle_around_y,
                                          transformation, img_shape_per_cam: Mapping[str, Any],
@@ -85,7 +80,7 @@ def associate_boxes_2d(detected_bboxes_2d, tracked_bboxes_2d, iou_threshold):
     Links two sets of 2D bounding boxes based on their IoU.
     Returns 3 lists of matches, unmatched_detection_indices and unmatched_track_indices
     """
-    iou_matrix = iou_bbox_2d_matrix(detected_bboxes_2d, tracked_bboxes_2d)
+    iou_matrix = utils_association.iou_bbox_2d_matrix(detected_bboxes_2d, tracked_bboxes_2d)
     matched_indices, unmatched_detection_indices, unmatched_track_indices = \
         perform_association_from_similarity(len(detected_bboxes_2d), len(tracked_bboxes_2d), iou_matrix)
     return filter_matches(matched_indices, unmatched_detection_indices, unmatched_track_indices, iou_matrix, iou_threshold)
@@ -125,7 +120,7 @@ def perform_association_from_similarity(first_items_len, second_items_len, simil
 def _perform_association_from_cost_hu(first_items_len, second_items_len, cost_matrix
                                       ) -> Tuple[np.ndarray, List[int], List[int]]:
     # Run the Hungarian algorithm for assignment from the cost matrix
-    matched_indices = linear_sum_assignment(cost_matrix)
+    matched_indices = optimize.linear_sum_assignment(cost_matrix)
     matched_indices = np.asarray(matched_indices).T
 
     unmatched_first_items = [i for i in range(first_items_len) if i not in matched_indices[:, 0]]
@@ -165,7 +160,7 @@ def greedy_match(cost_matrix):
     return np.array(matched_indices)
 
 
-def match_3d_2d_detections(dets_3d: Sequence[Bbox3d], cam: str, dets_2d: Sequence[Detection2D],
+def match_3d_2d_detections(dets_3d: Sequence[bbox.Bbox3d], cam: str, dets_2d: Sequence[detection_2d.Detection2D],
                            fusion_iou_threshold: Tuple[float, ...], classes_to_match: Iterable[int]
                            ) -> Tuple[Dict[int, int], Set[int], List[int]]:
     matched_indices: Dict[int, int] = {}
@@ -196,7 +191,7 @@ def match_3d_2d_detections(dets_3d: Sequence[Bbox3d], cam: str, dets_2d: Sequenc
 
 
 def match_multicam(candidate_matches: Mapping[int, Sequence[CamDetectionIndices]],
-                   instances_3d: Sequence[ProjectsToCam]) -> Dict[int, CamDetectionIndices]:
+                   instances_3d: Sequence[bbox.ProjectsToCam]) -> Dict[int, CamDetectionIndices]:
     """ 
     Matches each 3D instance (3D detection / track) with a single 2D detection given 
     a list of possible detections to match to. Decides which candidate detection to assign
@@ -220,7 +215,7 @@ def match_multicam(candidate_matches: Mapping[int, Sequence[CamDetectionIndices]
             largest_area = 0.0
 
             for cam, det_2d_i in cam_det_2d_indices:
-                area = box_2d_area(instance_3d.bbox_2d_in_cam(cam))
+                area = utils_geometry.box_2d_area(instance_3d.bbox_2d_in_cam(cam))
                 assert area > 0, f"All of the candidate 2D projections have to be valid {instance_3d.bbox_2d_in_cam(cam)}"
                 if area > largest_area:
                     largest_area = area

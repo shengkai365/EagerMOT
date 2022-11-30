@@ -1,18 +1,15 @@
 from __future__ import annotations
 import os
+import numpy as np
 import ujson as json
 from typing import Dict, List, Optional
 from collections import defaultdict
 
-import numpy as np
+from configs import local_variables
+from inputs import utils_io_ab3dmot, bbox, detections_2d, utils
 
-import inputs.utils_io_ab3dmot as ab3dmot_io
-from inputs.bbox import Bbox2d, Bbox3d
-import inputs.detections_2d as detections_2d
-import inputs.utils as utils
 import dataset_classes.nuscenes.classes as nu_classes
 import dataset_classes.kitti.classes as kitti_classes
-from configs.local_variables import KITTI_DATA_DIR, SPLIT, MOUNT_PATH
 
 CLASS_STR_TO_SEG_CLASS = {'Car': 1, 'Pedestrian': 2, 'Cyclist': -1}
 
@@ -21,7 +18,7 @@ CLASS_STR_TO_SEG_CLASS = {'Car': 1, 'Pedestrian': 2, 'Cyclist': -1}
 def _load_detections_ab3dmot(target_seq_name):
     detections_per_frame = []
     for seq_file_list in utils.det_pointrcnn_files_lists_all():
-        target_seq_file = [seq_file for seq_file in seq_file_list if ab3dmot_io.fileparts(seq_file)[
+        target_seq_file = [seq_file for seq_file in seq_file_list if utils_io_ab3dmot.fileparts(seq_file)[
             1] == target_seq_name]
         assert len(target_seq_file) == 1
         seq_dets = np.loadtxt(target_seq_file[0], delimiter=',')  # load detections
@@ -72,7 +69,7 @@ def parse_pointrcnn_dets_for_frame(dets_for_frame):
     alpha_orientation = dets_for_frame[:, -1].reshape((-1, 1))
     other_array = dets_for_frame[:, 1:7]  # det type, x1, y1, x2, y2, score
     additional_info = np.concatenate((alpha_orientation, other_array), axis=1)
-    return [Bbox3d.from_pointrcnn(det_coordinates, info=info, det_to_track_seg_class=detections_2d.DET_TO_TRACK_SEG_CLASS)
+    return [bbox.Bbox3d.from_pointrcnn(det_coordinates, info=info, det_to_track_seg_class=detections_2d.DET_TO_TRACK_SEG_CLASS)
             for det_coordinates, info in zip(dets_coordinates[:], additional_info[:])]
 
 
@@ -86,7 +83,7 @@ def parse_pointgnn_det(det_values):
     bbox_3d_coordinates = bbox_3d_coordinates[reorder]
     info = np.array([-1, -1, *bbox_2d_coordinates, confidence], dtype=np.float)
 
-    return Bbox3d.from_pointgnn(bbox_3d_coordinates, confidence=confidence, seg_class_id=seg_class_id,
+    return bbox.Bbox3d.from_pointgnn(bbox_3d_coordinates, confidence=confidence, seg_class_id=seg_class_id,
                                 bbox_2d_in_cam={"image_02": bbox_2d_coordinates}, info=info)
 
 
@@ -97,28 +94,28 @@ def confidence_distribution_for_detections(detections_per_frame):
             for target_class in [detections_2d.CAR_CLASS, detections_2d.PED_CLASS]]
 
 
-def load_detections_centerpoint() -> Dict[str, List[Bbox3d]]:
+def load_detections_centerpoint() -> Dict[str, List[bbox.Bbox3d]]:
     filepath = os.path.join(utils.DETECTIONS_CENTER_POINT_NUSCENES, "detections.json")
     print(f"Parsing {filepath}")
     with open(filepath, 'r') as f:
         full_results_json = json.load(f)
 
     all_detections = full_results_json["results"]
-    all_frames_to_bboxes: Dict[str, List[Bbox3d]] = {}
+    all_frames_to_bboxes: Dict[str, List[bbox.Bbox3d]] = {}
     for frame_token, frame_dets in all_detections.items():
         assert frame_token not in all_frames_to_bboxes
-        all_frames_to_bboxes[frame_token] = [Bbox3d.from_nu_det(det) for det in frame_dets
+        all_frames_to_bboxes[frame_token] = [bbox.Bbox3d.from_nu_det(det) for det in frame_dets
                                              if det["detection_name"] in nu_classes.ALL_NUSCENES_CLASS_NAMES]
     return all_frames_to_bboxes
 
 
-def load_annotations_kitti(seq_name: str) -> Dict[str, List[Bbox3d]]:
-    filepath = os.path.join(KITTI_DATA_DIR, SPLIT, "label_02", f"{seq_name}.txt")
+def load_annotations_kitti(seq_name: str) -> Dict[str, List[bbox.Bbox3d]]:
+    filepath = os.path.join(local_variables.KITTI_DATA_DIR, local_variables.SPLIT, "label_02", f"{seq_name}.txt")
     print(f"Parsing {filepath}")
     with open(filepath) as f:
         content = f.readlines()
 
-    all_frames_to_bboxes: Dict[str, List[Bbox3d]] = defaultdict(list)
+    all_frames_to_bboxes: Dict[str, List[bbox.Bbox3d]] = defaultdict(list)
     for line in content:
         entries = line.split(" ")
         class_str = entries[2]
@@ -130,14 +127,14 @@ def load_annotations_kitti(seq_name: str) -> Dict[str, List[Bbox3d]]:
         track_id = int(entries[1])
         occlusion = int(entries[4])
         bbox_2d_coords = (float(entries[6]), float(entries[7]), float(entries[8]), float(entries[9]))
-        bbox_2d_in_cam: Dict[str, Optional[Bbox2d]] = {"image_02": Bbox2d(*bbox_2d_coords)}
+        bbox_2d_in_cam: Dict[str, Optional[bbox.Bbox2d]] = {"image_02": bbox.Bbox2d(*bbox_2d_coords)}
         dims_hwl = (float(entries[10]), float(entries[11]), float(entries[12]))
         dims_lwh = (dims_hwl[2], dims_hwl[1], dims_hwl[0])
         center_xyz = (float(entries[13]), float(entries[14]), float(entries[15]))
         rotation_around_y = float(entries[16])
 
         # 7 elements: (x y z rotation-around-y l w h)
-        bbox_3d = Bbox3d(np.array([*center_xyz, rotation_around_y, *dims_lwh]),
+        bbox_3d = bbox.Bbox3d(np.array([*center_xyz, rotation_around_y, *dims_lwh]),
                          track_id, confidence=1.0, obs_angle=occlusion, seg_class_id=class_id,
                          bbox_2d_in_cam=bbox_2d_in_cam)
         all_frames_to_bboxes[str(frame_int).zfill(6)].append(bbox_3d)
@@ -145,10 +142,10 @@ def load_annotations_kitti(seq_name: str) -> Dict[str, List[Bbox3d]]:
     return all_frames_to_bboxes
 
 
-def load_detections_3dop(seq_name: str) -> Dict[str, List[Bbox3d]]:
+def load_detections_3dop(seq_name: str) -> Dict[str, List[bbox.Bbox3d]]:
     filepath = os.path.join(utils.DETECTIONS_3DOP_PATH, seq_name)
 
-    all_frames_to_bboxes: Dict[str, List[Bbox3d]] = defaultdict(list)
+    all_frames_to_bboxes: Dict[str, List[bbox.Bbox3d]] = defaultdict(list)
     for file_name in sorted(os.listdir(filepath)):
         frame_str = int(file_name.split('.')[0])
 
@@ -167,7 +164,7 @@ def load_detections_3dop(seq_name: str) -> Dict[str, List[Bbox3d]]:
                 continue
 
             bbox_2d_coords = (float(entries[4]), float(entries[5]), float(entries[6]), float(entries[7]))
-            bbox_2d_in_cam = {"image_02": Bbox2d(*bbox_2d_coords)}
+            bbox_2d_in_cam = {"image_02": bbox.Bbox2d(*bbox_2d_coords)}
             dims_hwl = (float(entries[8]), float(entries[9]), float(entries[10]))
             dims_lwh = (dims_hwl[2], dims_hwl[1], dims_hwl[0])
             center_xyz = (float(entries[11]), float(entries[12]), float(entries[13]))
@@ -175,7 +172,7 @@ def load_detections_3dop(seq_name: str) -> Dict[str, List[Bbox3d]]:
             confidence = float(entries[15])
 
             # 7 elements: (x y z rotation-around-y l w h)
-            bbox_3d = Bbox3d(np.array([*center_xyz, rotation_around_y, *dims_lwh]),
+            bbox_3d = bbox.Bbox3d(np.array([*center_xyz, rotation_around_y, *dims_lwh]),
                              obs_angle=-1, confidence=confidence, seg_class_id=class_id,
                              bbox_2d_in_cam=bbox_2d_in_cam)
             all_frames_to_bboxes[str(frame_str).zfill(6)].append(bbox_3d)

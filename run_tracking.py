@@ -1,14 +1,15 @@
 import time
 import argparse
-from inputs import utils
 from typing import Iterable, Set, Dict, Any
+
+from inputs import utils
 from dataset_classes import mot_dataset
 from dataset_classes.kitti import mot_kitti
 from dataset_classes.nuscenes import dataset
 from configs import parameters, local_variables
 
 
-def perform_tracking_full(dataset: mot_dataset.MOTDataset,
+def perform_tracking_full(dataset: mot_kitti.MOTDatasetKITTI,
                           params: Dict[str, Any], 
                           target_sequences: Set[str], 
                           sequences_to_exclude: Set[str], 
@@ -53,6 +54,7 @@ def perform_tracking_full(dataset: mot_dataset.MOTDataset,
         # 序列执行总时间
         sequence_time = time.time() - start_time
         if print_debug_info:
+            # 打印每个序列的执行情况
             print(f'Sequence {sequence_name} took {sequence_time:.2f} sec, {sequence_time / 60.0 :.2f} min')
             print(f'Matching took {run_info["total_time_matching"]:.2f} sec, {100 * run_info["total_time_matching"] / sequence_time:.2f}%')
             print(f'Creating took {run_info["total_time_creating"]:.2f} sec, {100 * run_info["total_time_creating"] / sequence_time:.2f}%')
@@ -76,8 +78,7 @@ def perform_tracking_full(dataset: mot_dataset.MOTDataset,
     if not print_debug_info:
         return variant, run_info
 
-    # Overall variant stats
-    # Timing
+    # 打印整个数据集的运行情况
     print(f'Fusion    {total_time_fusion: .2f} sec, {(100 * total_time_fusion / total_time):.2f}%')
     print(f'Tracking  {total_time_tracking: .2f} sec, {(100 * total_time_tracking / total_time):.2f}%')
     print(f'Reporting {total_time_reporting: .2f} sec, {(100 * total_time_reporting / total_time):.2f}%')
@@ -141,6 +142,8 @@ def perform_tracking_with_params(dataset: mot_dataset.MOTDataset,
 
 
 def run_on_nuscenes():
+    '''在nuscenes数据集上执行MOT
+    '''
     VERSION = "v1.0-trainval"
     # 创建nuscenes数据集对象
     nuscenes_dataset = dataset.MOTDatasetNuScenes(
@@ -162,6 +165,8 @@ def run_on_nuscenes():
 
 
 def run_on_kitti():
+    '''在Kitti数据集上执行MOT
+    '''
     # 创建kitti数据集对象
     kitti_dataset = mot_kitti.MOTDatasetKITTI(
                     work_dir=local_variables.KITTI_WORK_DIR,

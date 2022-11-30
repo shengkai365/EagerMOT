@@ -1,34 +1,30 @@
+import collections
+import numpy as np
 from typing import Iterable, List, Dict, Set, Optional, Sequence, Any
 
-import numpy as np
-
-from tracking.data_association import (
-    associate_instances_to_tracks_3d_iou,
-    associate_instances_to_tracks_2d_iou,
-    match_multicam, CamDetectionIndices
-)
-from tracking.tracks import Track
-from collections import defaultdict
-from objects.fused_instance import FusedInstance
-from transform.transformation import Transformation
-import dataset_classes.nuscenes.classes as nu_classes
-from utils.utils_geometry import project_bbox_3d_to_2d
-from inputs.bbox import Bbox2d
-
+from inputs import bbox
+from utils import utils_geometry
+from objects import fused_instance
+from transform import transformation
+from tracking import tracks, data_association
 
 class TrackManager(object):
+    '''一个序列对象的轨迹管理类: MOTDataset -> MOTSequence -> TrackManager
+    Attributes:
+        ......
+    '''
     def __init__(self, cameras: Sequence[str], classes_to_track: Iterable[int]):
-        self.trackers: List[Track] = []
+        self.trackers: List[tracks.Track] = []
         self.frame_count = 0
         self.cameras = cameras
         self.classes_to_track = classes_to_track
 
-        Track.count = 0
+        tracks.Track.count = 0
         self.track_ids_map: Dict[int, int] = {}
         self.track_id_latest = 1  # evaluations expect positive track ids
 
         # will be set by the calling MOTSequence
-        self.transformation: Optional[Transformation] = None
+        self.transformation: Optional[transformation.Transformation] = None
         # maps cameras to their image plane shapes whose len need to be 2: tuple, array, etc.
         self.img_shape_per_cam: Optional[Dict[str, Any]] = None
 
@@ -43,7 +39,7 @@ class TrackManager(object):
         self.second_matching_method = params.get('second_matching_method', 'iou')
         self.leftover_thres = params.get('leftover_matching_thres')
 
-    def update(self, fused_instances: Iterable[FusedInstance], params: Dict,
+    def update(self, fused_instances: Iterable[fused_instance.FusedInstance], params: Dict,
                frame_data: Dict, run_info: Dict, ego_transform=None, angle_around_y=None):
         """ Matches current frame's detections with existing tracks and manages their lifecycle. Should be called for each frame even with empty detections
 
@@ -82,7 +78,7 @@ class TrackManager(object):
             # print(f"Frame: {self.frame_count - 1}")
             # The 1st matching stage via 3D IoU
             matched_instances_to_tracks_first, unmatched_det_indices_first, unmatched_motion_track_indices_first = \
-                associate_instances_to_tracks_3d_iou(det_instances_3d, tracks_with_3d_models, params)
+                data_association.associate_instances_to_tracks_3d_iou(det_instances_3d, tracks_with_3d_models, params)
 
             # print(f'det_instances_3d: {len(det_instances_3d)}, predicted_3d_states: {len(predicted_3d_states)}, total tracks: {len(self.trackers)}')
             # print(f'matched_instances_to_tracks_first {len(matched_instances_to_tracks_first)}')
@@ -112,8 +108,8 @@ class TrackManager(object):
             assert len(leftover_track_indices) == len(set(leftover_track_indices))
 
             # Gather all unmatched detected instances (no 3D box + failed 1st stage)
-            leftover_det_instance_multicam: Dict[str, List[FusedInstance]] = defaultdict(list)
-            leftover_det_instances_no_2d: List[FusedInstance] = []
+            leftover_det_instance_multicam: Dict[str, List[fused_instance.FusedInstance]] = collections.defaultdict(list)
+            leftover_det_instances_no_2d: List[fused_instance.FusedInstance] = []
             total_leftover_det_instances = len(det_instances_from_mask)
             for instance in det_instances_from_mask:
                 assert instance.detection_2d
@@ -131,7 +127,7 @@ class TrackManager(object):
             # print(f"leftover_det_instances_no_2d:\n{leftover_det_instances_no_2d}")
 
             # The 2nd matching stage via 2D bbox IoU (multicam)
-            matched_indices: Dict[int, List[CamDetectionIndices]] = defaultdict(list)
+            matched_indices: Dict[int, List[data_association.CamDetectionIndices]] = collections.defaultdict(list)
             unmatched_track_indices_final: Set[int] = set(range(len(leftover_tracks)))
             unmatched_det_indices_final: Dict[str, Set[int]] = {
                 cam: set(range(len(det_instances))) for cam, det_instances in leftover_det_instance_multicam.items()
@@ -144,7 +140,7 @@ class TrackManager(object):
                     assert all(instance.bbox3d is None for instance in instances_list)  # 431
                     (matched_instances_to_tracks_second_cam, unmatched_det_indices_cam,
                         unmatched_track_indices_cam) = \
-                        associate_instances_to_tracks_2d_iou(
+                        data_association.associate_instances_to_tracks_2d_iou(
                             instances_list, leftover_tracks, self.leftover_thres,
                             ego_transform, angle_around_y, self.transformation, self.img_shape_per_cam, cam, frame_data)
 
@@ -178,7 +174,7 @@ class TrackManager(object):
                 total_unmatched_leftover_instances += len(unmatched_det_indices)
             assert total_matched_leftover_instances + total_unmatched_leftover_instances == total_leftover_det_instances
 
-            matched_tracks_to_cam_instances_second = match_multicam(matched_indices, leftover_tracks)
+            matched_tracks_to_cam_instances_second = data_association.match_multicam(matched_indices, leftover_tracks)
             run_info["matched_tracks_second_total"] += len(matched_tracks_to_cam_instances_second)
             run_info["unmatched_tracks_second_total"] += len(unmatched_track_indices_final)
             run_info["unmatched_dets2d_second_total"] += total_unmatched_leftover_instances
@@ -204,8 +200,8 @@ class TrackManager(object):
                 for instance_i in indices:
                     instance = leftover_det_instance_multicam[cam][instance_i]
                     if instance.bbox3d is not None:
-                        self.trackers.append(Track(instance, self.is_angular))
-            self.trackers.extend([Track(instance, self.is_angular)
+                        self.trackers.append(tracks.Track(instance, self.is_angular))
+            self.trackers.extend([tracks.Track(instance, self.is_angular)
                                   for instance in leftover_det_instances_no_2d if instance.bbox3d is not None])
 
         # Report, remove obsolete tracks for all classes
@@ -233,9 +229,9 @@ class TrackManager(object):
                     instance.bbox3d.obs_angle = track.obs_angle
 
                     if len(self.cameras) < 2:  # KITTI
-                        bbox_2d = project_bbox_3d_to_2d(
+                        bbox_2d = utils_geometry.project_bbox_3d_to_2d(
                             bbox_3d, self.transformation, self.img_shape_per_cam, self.cameras[0], None)
-                        instance.projected_bbox_3d = Bbox2d(*bbox_2d) if bbox_2d is not None else None
+                        instance.projected_bbox_3d = bbox.Bbox2d(*bbox_2d) if bbox_2d is not None else None
 
                     max_age_2d_for_class = self.max_age_2d[track.class_id - 1]
                     if track.time_since_2d_update < max_age_2d_for_class:

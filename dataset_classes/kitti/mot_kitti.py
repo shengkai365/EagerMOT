@@ -197,6 +197,8 @@ class MOTSequenceKITTI(mot_sequence.MOTSequence):
         return self.ego_motion_transforms[frame_int]
 
     def save_ego_motion_transforms_if_new(self) -> None:
+        '''保存自我运动(ego motion)的npy文件
+        '''
         if not self.has_full_ego_motion_transforms_loaded:
             with open(self.ego_motion_filepath, 'wb') as np_file:
                 np.save(np_file, self.ego_motion_transforms)
@@ -213,9 +215,21 @@ class MOTSequenceKITTI(mot_sequence.MOTSequence):
     def report_mot_results(self, frame_name: str, predicted_instances: Iterable[fused_instance.FusedInstance],
                            mot_3d_file: IO,
                            mot_2d_from_3d_only_file: Optional[IO]) -> None:
+        '''报道(保存)多目标跟踪结果
+        Args:
+            frame_name:             帧序号, 如 000001
+            predicted_instances:    预测实例对象
+            mot_3d_file:            三维跟踪结果文件的描述符 txt
+            mot_2d_from_3d_only_file:   二维跟踪结果文件的描述符 txt
+        '''
         reporting.write_to_mot_file(frame_name, predicted_instances, mot_3d_file, mot_2d_from_3d_only_file)
 
     def save_mot_results(self, mot_3d_file: IO, mot_2d_from_3d_file: Optional[IO]) -> None:
+        '''保存跟踪结果, 即关闭文件描述符
+        Args:
+            mot_3d_file:            三维多目标跟踪结果文件描述符
+            mot_2d_from_3d_file:    二维多目标跟踪结果文件描述符
+        '''
         io.close_files((mot_3d_file, mot_2d_from_3d_file))
 
     ##########################################################
@@ -267,6 +281,13 @@ class MOTDatasetKITTI(mot_dataset.MOTDataset):
         return list(self.split_sequence_frame_names_map[split].keys())
 
     def get_sequence(self, split: str, sequence_name: str) -> MOTSequenceKITTI:
+        '''根据分割符和序列号创建并返回KITTI序列对象
+        args:
+            split: 分隔符, 有training和testing
+            sequence_name: 序列号, 如 0001
+        Returns:
+            KITTI序列对象
+        '''
         self.assert_sequence_in_split_exists(split, sequence_name)
         split_dir = os.path.join(self.work_dir, split)
         return MOTSequenceKITTI(self.detections_3d, self.detections_2d, split_dir, split, sequence_name,

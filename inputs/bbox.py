@@ -1,24 +1,23 @@
 from __future__ import annotations
-import math
-from typing import Dict, Optional, List, Tuple, Any, Mapping
-from collections import namedtuple
-from abc import abstractmethod, ABC
+import abc
+import collections
 import numpy as np
-from pyquaternion import Quaternion
+import pyquaternion
+from typing import Dict, Optional, List, Tuple, Any, Mapping
+
+from transform import transformation
+from utils import utils_geometry
+import transform.nuscenes as nu_transform
+
+from dataset_classes.nuscenes.classes import id_from_name
 from nuscenes.eval.common.utils import quaternion_yaw
 from nuscenes.utils.data_classes import Box
 
-from transform.transformation import to_homogeneous, inverse_rigid_transform
-import transform.nuscenes as nu_transform
-import utils.utils_geometry as utils_geometry
-from dataset_classes.nuscenes.classes import id_from_name
+Bbox2d = collections.namedtuple('Bbox2d', 'x1 y1 x2 y2')
 
 
-Bbox2d = namedtuple('Bbox2d', 'x1 y1 x2 y2')
-
-
-class ProjectsToCam(ABC):
-    @abstractmethod
+class ProjectsToCam(abc.ABC):
+    @abc.abstractmethod
     def bbox_2d_in_cam(self, cam: str) -> Optional[Bbox2d]:
         pass
 
@@ -79,7 +78,7 @@ class Bbox3d(ProjectsToCam):
     def from_nu_det(cls, det: Mapping, instance_id=None, convert_to_kitti: bool = True) -> "Bbox3d":
         center = det["translation"]
         size = det["size"]
-        orientation = Quaternion(det["rotation"])
+        orientation = pyquaternion.Quaternion(det["rotation"])
         score = det["detection_score"]
         name = det["detection_name"]
         velocity = det["velocity"]
@@ -136,12 +135,12 @@ class Bbox3d(ProjectsToCam):
             points >= rotated_first_corner - margin, points <= rotated_last_corner + margin)
         return np.flatnonzero(np.all(mask_coordinates_inside, axis=1))
 
-    def transform(self, transformation, angle_around_y):
-        assert transformation is not None, 'Requested None transformation'
+    def transform(self, transf, angle_around_y):
+        assert transf is not None, 'Requested None transformation'
         corners_and_center = np.vstack((self.corners_3d, self.kf_coordinates[:3].reshape(1, -1)))  # Nx3
-        transformed_corners_and_center = to_homogeneous(
+        transformed_corners_and_center = transformation.to_homogeneous(
             corners_and_center)  # Nx4, but usually it should be 4xN
-        transformed_corners_and_center = transformation @ transformed_corners_and_center.T
+        transformed_corners_and_center = transf @ transformed_corners_and_center.T
         transformed_corners_and_center = transformed_corners_and_center.T
 
         self.corners_3d = transformed_corners_and_center[:-1, :-1]
@@ -149,9 +148,9 @@ class Bbox3d(ProjectsToCam):
         self.kf_coordinates[:3] = transformed_corners_and_center[-1, :-1]
         self.kf_coordinates[3] += angle_around_y
 
-    def inverse_transform(self, transformation, angle_around_y):
-        assert transformation is not None, 'Requested None reverse transformation'
-        self.transform(inverse_rigid_transform(transformation), -angle_around_y)
+    def inverse_transform(self, transf, angle_around_y):
+        assert transf is not None, 'Requested None reverse transformation'
+        self.transform(transformation.inverse_rigid_transform(transf), -angle_around_y)
 
     def reset_kf_coordinates(self):
         self.kf_coordinates = self.original_coordinates.copy()

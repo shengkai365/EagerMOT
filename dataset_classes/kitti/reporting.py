@@ -1,11 +1,18 @@
 from typing import Optional, IO, Mapping, Any, Iterable, List
-from objects.fused_instance import FusedInstance
-import inputs.detections_2d as detections_2d
 
+from inputs import detections_2d
+from objects import fused_instance
 
-def write_to_mot_file(frame_name: str, predicted_instances: Iterable[FusedInstance],
+def write_to_mot_file(frame_name: str, predicted_instances: Iterable[fused_instance.FusedInstance],
                       mot_3d_file: IO,
                       mot_2d_from_3d_only_file: Optional[IO]) -> None:
+    '''根据预测实例对象写入多目标跟踪结果
+    Args:
+        frame_name:                 帧序号, 如 000001
+        predicted_instances:        预测实例对象
+        mot_3d_file:                三维跟踪结果文件的描述符 txt
+        mot_2d_from_3d_only_file:   二维跟踪结果文件的描述符 txt
+    '''
     mot_3d_results_str, mot_2d_results_str = "", ""
     tracking_3d_format = "%d %d %s 0 0 %f -1 -1 -1 -1 %f %f %f %f %f %f %f %f\n"
     tracking_2d_format = "%d %d %s 0 0 -10 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 %f\n"

@@ -1,7 +1,6 @@
 from __future__ import annotations
 import os
 from typing import Optional, List, Callable, Iterable, Dict
-from collections import defaultdict
 
 import matplotlib.image as mpimg
 import imageio

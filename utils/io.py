@@ -12,7 +12,9 @@ def makedirs_if_new(path: str) -> bool:
 
 
 def close_files(files: Iterable[Optional[IO]]) -> None:
-    '''关闭文件描述符
+    '''关闭文件序列
+    args:
+        files: 文件描述符的可迭代对象
     '''
     for f in files:
         if f is not None:
